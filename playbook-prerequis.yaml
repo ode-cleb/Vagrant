@@ -1,0 +1,201 @@
+---
+- name: Installation des prerequis d'un serveur linux redhat 8
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Creation du dictionnaire de variable
+      ansible.builtin.set_fact:
+        userdata: "{{ userdata | default({}) | combine({item.key: item.value}) }}"
+      with_items:
+        - { 'key': 'path_to_install', 'value': '/home/isc/install'}
+        - { 'key': 'tuned_profile_target', 'value': 'virtual-guest'}
+        - { 'key': 'users', 'value': 'isc'}
+        - { 'key': 'log_zellij_tmp', 'value': '/home/isc/zellij.log'}
+    - name: Display the Dictionary
+      ansible.builtin.debug:
+        var: userdata
+    - name: Définir le hostname
+      ansible.builtin.hostname:
+        name: techdev2
+    - name: S'assurer que le hostname est présent dans /etc/hosts (IPv4 et IPv6)
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ item }}"
+        state: present
+        create: yes
+      loop:
+        - "127.0.0.1   techdev2"
+        - "::1         techdev2"
+    - name: Subscription red hat 8 repository
+      ansible.builtin.command: subscription-manager register --username ode-cleb --password Nouveau_depart_42 --force --auto-attach --insecure
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Enable red hat codeready builder 8 repository
+      ansible.builtin.command: subscription-manager repos --enable codeready-builder-for-rhel-8-x86_64-rpms
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Check gpg key for red hat epel release 8 repository
+      ansible.builtin.rpm_key:
+        state: present
+        key: https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-8
+    - name: Enable Red Hat epel release 8 repository
+      ansible.builtin.yum:
+        name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+        state: present
+    - name: Set red hat epel-release repository repository to 10
+      ansible.builtin.lineinfile:
+        path: /etc/yum.repos.d/epel.repo
+        insertafter: enabled=1
+        line: priority=10
+    - name: Check gpg key for red hat elrepo-release 8 repository
+      ansible.builtin.rpm_key:
+        state: present
+        key: https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
+    - name: Enable red hat elrepo-release 8 repository
+      ansible.builtin.yum:
+        name: https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm
+        state: present
+    - name: Set red hat elrepo-release repository repository to 10
+      ansible.builtin.lineinfile:
+        path: /etc/yum.repos.d/elrepo.repo
+        insertafter: enabled=1
+        line: priority=10
+    - name: Check gpg key for red hat remi-release 8 repository
+      ansible.builtin.rpm_key:
+        state: present
+        key: https://rpms.remirepo.net/enterprise/8/RPM-GPG-KEY-remi
+    - name: Enable red hat remi-release 8 repository
+      ansible.builtin.yum:
+        name: https://rpms.remirepo.net/enterprise/remi-release-8.rpm
+        state: present
+    - name: Set red hat remi-release 8 repository repository to 10
+      ansible.builtin.lineinfile:
+        path: /etc/yum.repos.d/remi-safe.repo
+        insertafter: enabled=1
+        line: priority=10
+    - name: Refresh subscription
+      ansible.builtin.command: subscription-manager refresh
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Put seLinux in permissive mode logging actions that would be blocked
+      ansible.posix.selinux:
+        policy: targeted
+        state: permissive
+    - name: Create user isc account with privilieges
+      ansible.builtin.user:
+        name: isc
+        groups: wheel
+        state: present
+    - name: Install ssh
+      ansible.builtin.yum:
+        name: openssh-server
+        state: present
+    - name: Start SSHD service
+      ansible.builtin.service:
+        name: sshd
+        enabled: true
+        state: started
+    - name: Installer ntpd
+      ansible.builtin.yum:
+        name: chrony
+        state: present
+    - name: Start ntpd service
+      ansible.builtin.service:
+        name: chronyd
+        enabled: true
+        state: started
+    - name: Install tuned
+      ansible.builtin.yum:
+        name: tuned
+        state: present
+    - name: Start tuned service
+      ansible.builtin.service:
+        name: tuned
+        enabled: true
+        state: started
+    - name: Install tools
+      ansible.builtin.yum:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - vim
+        - htop
+        - net-tools
+        - wget
+        - curl
+        - cockpit
+        - git
+        - ansible
+        - asciinema
+        - tldr
+    - name: Start cockpit
+      ansible.builtin.service:
+        name: cockpit
+        enabled: true
+        state: started
+    - name: Download zellij
+      ansible.builtin.get_url:
+        url: https://github.com/zellij-org/zellij/releases/download/v0.43.1/zellij-x86_64-unknown-linux-musl.tar.gz
+        dest: /tmp/zellij-x86_64-unknown-linux-musl.tar.gz
+        mode: "0440"
+    - name: Install zellij
+      ansible.builtin.command: sudo tar -xvf /tmp/zellij-x86_64-unknown-linux-musl.tar.gz -C /usr/local/bin
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Install zellij 2
+      ansible.builtin.command: rm /tmp/zellij-x86_64-unknown-linux-musl.tar.gz
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Install zellij 3
+      ansible.builtin.command: /usr/local/bin/zellij setup --generate-completion bash
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Install zellij 4
+      ansible.builtin.shell: eval "$(/usr/local/bin/zellij setup --generate-completion bash)"
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Install zellij 5
+      ansible.builtin.command: echo 'eval "$(zellij setup --generate-completion bash)"' >> .bashrc
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Install zellij 6
+      ansible.builtin.command: echo 'eval "$(zellij setup --generate-completion bash)"' >> /home/isc/.bashrc
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Install zellij 7
+      ansible.builtin.file:
+        path: /home/isc/.config/zellij/
+        state: directory
+        mode: '0755'
+    - name: Install zellij 8
+      ansible.builtin.file:
+        path: /home/isc/.config/zellij/config.kdl
+        state: touch
+        mode: '0644'
+    - name: Install zellij 9
+      ansible.builtin.shell: /usr/local/bin/zellij setup --dump-config > /home/isc/.config/zellij/config.kdl
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Install zellij 10
+      ansible.builtin.shell: echo 'copy_clipboard "primary"' >> /home/isc/.config/zellij/config.kdl
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Installation des paquets ansible
+      ansible.builtin.command: ansible-galaxy collection install community.general
+      register: ansible
+      changed_when: ansible.rc != 0
+    - name: Tcp ports facts
+      community.general.listen_ports_facts:
+    - name: Add ports to firewall
+      ansible.posix.firewalld:
+        port: "{{ item }}/tcp"
+        state: enabled
+        immediate: true
+        permanent: true
+      loop: "{{ ansible_facts.tcp_listen  | map(attribute='port') | sort | list }}"
+      register: ports_added_to_firewalld
+    - name: Print ports added
+      ansible.builtin.debug:
+        var: ports_added_to_firewalld
